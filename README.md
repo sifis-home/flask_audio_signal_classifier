@@ -25,6 +25,7 @@ The analytic generates the top 5 predictions or classifications, providing insig
 ## Deploying
 
 ### Privacy-Aware Audio Signal Classifier
+The DHT and the Analytics-API containers should be running before starting to build and run the image and container of the Privacy-Aware Audio Signal Classifier.
 
 Privacy-Aware Audio Signal Classifier is intended to run in a docker container on port 5000. The Dockerfile at the root of this repo describes the container. To build and run it execute the following commands:
 
