@@ -13,20 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-import h5py
 import numpy as np
+import h5py
 import pandas as pd
 import tensorflow as tf
-from maxfw.model import MAXModelWrapper
-
-from config import (
-    DEFAULT_CLASSIFIER_MODEL,
-    DEFAULT_EMBEDDING_CHECKPOINT,
-    DEFAULT_PCA_PARAMS,
-)
+from . import vggish_input
+from . import vggish_params
+from . import vggish_postprocess
+from . import vggish_slim
 from config import MODEL_META_DATA as model_meta
-
-from . import vggish_input, vggish_params, vggish_postprocess, vggish_slim
+from maxfw.model import MAXModelWrapper
+from config import DEFAULT_EMBEDDING_CHECKPOINT, DEFAULT_PCA_PARAMS, DEFAULT_CLASSIFIER_MODEL
 
 
 class ModelWrapper(MAXModelWrapper):
@@ -37,37 +34,27 @@ class ModelWrapper(MAXModelWrapper):
 
     MODEL_META_DATA = model_meta
 
-    def __init__(
-        self,
-        embedding_checkpoint=DEFAULT_EMBEDDING_CHECKPOINT,
-        pca_params=DEFAULT_PCA_PARAMS,
-        classifier_model=DEFAULT_CLASSIFIER_MODEL,
-    ):
+    def __init__(self, embedding_checkpoint=DEFAULT_EMBEDDING_CHECKPOINT, pca_params=DEFAULT_PCA_PARAMS,
+                 classifier_model=DEFAULT_CLASSIFIER_MODEL):
         # Initialize the classifier model
-        self.session_classify = tf.compat.v1.keras.backend.get_session()
+        self.session_classify = tf.keras.backend.get_session()
         with h5py.File(classifier_model) as f:
             self.classify_model = tf.keras.models.load_model(f, compile=False)
 
         # Initialize the vgg-ish embedding model
         self.graph_embedding = tf.Graph()
         with self.graph_embedding.as_default():
-            self.session_embedding = tf.compat.v1.Session()
+            self.session_embedding = tf.Session()
             vggish_slim.define_vggish_slim(training=False)
-            vggish_slim.load_vggish_slim_checkpoint(
-                self.session_embedding, embedding_checkpoint
-            )
-            self.features_tensor = self.session_embedding.graph.get_tensor_by_name(
-                vggish_params.INPUT_TENSOR_NAME
-            )
-            self.embedding_tensor = self.session_embedding.graph.get_tensor_by_name(
-                vggish_params.OUTPUT_TENSOR_NAME
-            )
+            vggish_slim.load_vggish_slim_checkpoint(self.session_embedding, embedding_checkpoint)
+            self.features_tensor = self.session_embedding.graph.get_tensor_by_name(vggish_params.INPUT_TENSOR_NAME)
+            self.embedding_tensor = self.session_embedding.graph.get_tensor_by_name(vggish_params.OUTPUT_TENSOR_NAME)
 
         # Prepare a postprocessor to munge the vgg-ish model embeddings.
         self.pproc = vggish_postprocess.Postprocessor(pca_params)
 
         # Metadata
-        self.indices = pd.read_csv("samples/class_labels_indices.csv")
+        self.indices = pd.read_csv('samples/class_labels_indices.csv')
 
     def generate_embeddings(self, wav_file):
         """
@@ -79,9 +66,8 @@ class ModelWrapper(MAXModelWrapper):
                 None.
         """
         examples_batch = vggish_input.wavfile_to_examples(wav_file)
-        [embedding_batch] = self.session_embedding.run(
-            [self.embedding_tensor], feed_dict={self.features_tensor: examples_batch}
-        )
+        [embedding_batch] = self.session_embedding.run([self.embedding_tensor],
+                                                       feed_dict={self.features_tensor: examples_batch})
         return self.pproc.postprocess(embedding_batch)
 
     def classify_embeddings(self, processed_embeddings):
@@ -94,10 +80,7 @@ class ModelWrapper(MAXModelWrapper):
         """
         output_tensor = self.classify_model.output
         input_tensor = self.classify_model.input
-        class_scores = output_tensor.eval(
-            feed_dict={input_tensor: processed_embeddings},
-            session=self.session_classify,
-        )
+        class_scores = output_tensor.eval(feed_dict={input_tensor: processed_embeddings}, session=self.session_classify)
         return class_scores
 
     def _predict(self, wav_file, time_stamp):
@@ -162,15 +145,9 @@ class ModelWrapper(MAXModelWrapper):
             preds : list of (label_id,label,probability) tuples for top 5 class scores.
         """
         top_preds = raw_preds.argsort()[-5:][::-1]
-        preds = [
-            (
-                self.indices.loc[top_preds[i]]["mid"],
-                self.indices.loc[top_preds[i]]["display_name"],
-                raw_preds[top_preds[i]],
-            )
-            for i in range(len(top_preds))
-        ]
+        preds = [(self.indices.loc[top_preds[i]]['mid'], self.indices.loc[top_preds[i]]['display_name'],
+                  raw_preds[top_preds[i]]) for i in range(len(top_preds))]
         return preds
 
     def uint8_to_float32(self, x):
-        return (np.float32(x) - 128.0) / 128.0
+        return (np.float32(x) - 128.) / 128.
